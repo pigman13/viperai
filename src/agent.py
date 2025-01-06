@@ -1,6 +1,7 @@
 from typing import Annotated, List, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
+from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_ollama import ChatOllama
 from tools import tools
@@ -12,6 +13,7 @@ import json
 
 # Initialize Rich console
 console = Console()
+memory = MemorySaver()
 
 class State(TypedDict):
     """State for managing messages"""
@@ -88,7 +90,7 @@ def create_chat_graph() -> StateGraph:
     graph.add_edge("tools", "chatbot")
     graph.add_edge(START, "chatbot")
     
-    return graph.compile()
+    return graph.compile(checkpointer=memory)
 
 def display_welcome():
     """Display welcome message and instructions"""

@@ -155,12 +155,41 @@ ERROR_MESSAGES = {
     "tool_not_found": "The specified tool is not available on this system."
 }
 
-# Protected operations
+# Protected operations for local machine safety
 PROTECTED_OPERATIONS = {
-    "file_deletion": {
-        "commands": ["del", "rm", "remove", "rmdir", "rd", "erase"],
-        "powershell_commands": ["Remove-Item", "Remove-Directory", "Clear-Content"],
-        "patterns": [r"-rf", r"/s", r"/q", r"format"]
+    "system_destruction": {
+        "commands": [
+            "format", "fdisk", "diskpart",  # Disk operations
+            "shutdown", "restart",          # System state
+            "reg delete", "reg kill",       # Registry
+            "taskkill", "kill",            # Process killing
+            "del", "rm", "remove",         # File deletion
+            "rmdir", "rd",                 # Directory removal
+        ],
+        "powershell_commands": [
+            "Remove-Item",
+            "Stop-Process",
+            "Stop-Service",
+            "Remove-Service",
+            "Clear-Content",
+            "Format-Volume",
+            "Remove-Computer",
+            "Reset-ComputerMachinePassword"
+        ],
+        "dangerous_patterns": [
+            r"-rf",           # Force remove
+            r"/f",            # Force
+            r"/s",            # Recursive
+            r"/q",            # Quiet
+            r"format c:",     # Format system
+            r"\\\\",          # Network paths
+            r"system32",      # System directory
+            r"windows",       # Windows directory
+            r"%systemroot%",  # System root
+            r"%windir%",      # Windows directory
+            r"program files", # Program directories
+            r"\\admin"        # Admin shares
+        ]
     }
 }
 
@@ -175,23 +204,30 @@ PRIVILEGE_CONFIG = {
 
 # Access control messages
 ACCESS_MESSAGES = {
-    "grant_success": "[bold green]Unlimited access granted. File deletion remains restricted for safety.[/bold green]",
+    "grant_success": "[bold green]Access granted. Local machine protection remains active for safety.[/bold green]",
     "grant_failed": "[bold red]Access denied. System error.[/bold red]",
-    "already_granted": "[yellow]You already have unlimited access.[/yellow]",
-    "protected_operation": "[bold red]This operation is restricted to protect system files.[/bold red]",
-    "access_required": "[yellow]This operation requires elevated privileges. Use 'grant access' to authenticate.[/yellow]"
+    "already_granted": "[yellow]You already have access (with local machine protection).[/yellow]",
+    "protected_operation": "[bold red]⚠️ This operation is restricted as it could harm the local machine.[/bold red]",
+    "access_required": "[yellow]This operation requires elevated privileges. Use 'grant access' to authenticate.[/yellow]",
+    "protection_info": """[bold yellow]Protected Operations:[/bold yellow]
+• System disk operations (format, fdisk)
+• System state changes (shutdown, restart)
+• Registry modifications
+• Critical process termination
+• System file/directory deletion
+• System service modifications"""
 }
 
 def is_protected_operation(command: str) -> bool:
     """
-    Check if the command is a protected operation
+    Check if the command could harm the local machine
     Args:
         command: Command to check
     Returns:
-        Boolean indicating if operation is protected
+        Boolean indicating if operation is dangerous
     """
     command_lower = command.lower()
-    protected = PROTECTED_OPERATIONS["file_deletion"]
+    protected = PROTECTED_OPERATIONS["system_destruction"]
     
     # Check for protected commands
     if any(cmd in command_lower for cmd in protected["commands"]):
@@ -202,37 +238,47 @@ def is_protected_operation(command: str) -> bool:
         return True
         
     # Check for dangerous patterns
-    if any(pattern in command_lower for pattern in protected["patterns"]):
+    if any(pattern in command_lower for pattern in protected["dangerous_patterns"]):
+        return True
+        
+    # Check for system paths
+    if any(path in command_lower for path in [
+        "c:\\windows", 
+        "c:\\program files",
+        "system32",
+        "%systemroot%",
+        "%windir%"
+    ]):
         return True
         
     return False
 
 def grant_access(password: str = None) -> bool:
     """
-    Grant unlimited access except for file deletion
+    Grant access while maintaining local machine protection
     Args:
-        password: Optional password (not used in unlimited mode)
+        password: Optional password (not used in this mode)
     Returns:
         Boolean indicating if access was granted
     """
     global PRIVILEGE_CONFIG
     
     # If already granted
-    if PRIVILEGE_CONFIG["access_granted"] and PRIVILEGE_CONFIG["unlimited_access"]:
+    if PRIVILEGE_CONFIG["access_granted"]:
         return True
         
-    # Grant unlimited access
+    # Grant access with protection
     PRIVILEGE_CONFIG["access_granted"] = True
     PRIVILEGE_CONFIG["unlimited_access"] = True
-    PRIVILEGE_CONFIG["session_token"] = "UNLIMITED_SESSION"
-    PRIVILEGE_CONFIG["privilege_timeout"] = None  # No timeout
+    PRIVILEGE_CONFIG["session_token"] = "PROTECTED_SESSION"
+    PRIVILEGE_CONFIG["privilege_timeout"] = None
     return True
 
 def check_privileges(command: str = None) -> bool:
     """
-    Check if operation is allowed
+    Check if operation is allowed under local machine protection
     Args:
-        command: Optional command to check against protected operations
+        command: Command to check against protected operations
     Returns:
         Boolean indicating if operation is allowed
     """
