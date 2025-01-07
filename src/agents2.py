@@ -7,7 +7,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from typing import List, Dict, Any, Annotated, TypedDict
 from src.config import get_model_settings, OLLAMA_CONFIG
-from src.prompts import PLANNER_PROMPT, EXECUTOR_PROMPT
+from src.prompts import PLANNER_PROMPT, EXECUTOR_PROMPT, SUMMARY_PROMPT
 from src.tools import tools
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -79,11 +79,13 @@ class ChatAgent:
         
         def executor(state: State):
             messages = state["messages"]
-            messages = messages[-1]
-            print("using executor")
+            messages = EXECUTOR_PROMPT + "\n" + messages[-1].content
             print(messages)
-            return {"messages": [llm_with_tools.invoke(messages.content)]}
-        
+            print("using executor")
+            return {"messages": [llm_with_tools.invoke(messages)]}
+        #EXECUTOR DOES ONLY ONE STEP AND THEN CALLS SUMMARY
+
+
         def planner(state: State):
             print("using planner")
             """Planner node that creates execution steps for the executor
@@ -107,7 +109,7 @@ class ChatAgent:
         def summary(state: State):
             print("using summary")
             messages = state.get("messages", [])
-            messages.append(HumanMessage(content="generate report from the following conversation from the output of the tools and the ai, so the ai will know what to say to the user"))
+            messages.append(HumanMessage(content=SUMMARY_PROMPT))
             result = self.llm.invoke(messages)
             return {"messages": [result]}
 
