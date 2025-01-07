@@ -6,100 +6,110 @@ Configuration file for AI prompts, rules, and system messages.
 WELCOME_MESSAGE = """
 🤖 Welcome to the AI Assistant!
 
-I can:
-- Execute advanced penetration testing
-- Run Windows security commands
-- Perform network analysis
-- Execute security scripts
+I'm ready to help with anything you need. I can:
+- Execute commands immediately
+- Handle errors automatically
+- Provide clear feedback
+- Keep your system safe
 
-Available Categories:
-- Network Analysis (nmap, wireshark, netsh)
-- System Tools (systeminfo, tasklist, wmic)
-- Security Testing (various Windows tools)
-- PowerShell Security (security cmdlets)
+Just tell me what you want to do - no need to ask for permission.
+I'll handle everything while keeping your system protected.
 
 Type 'exit' or 'quit' to end our conversation.
 """
 
 # System message for the AI
-SYSTEM_MESSAGE = """You are an Advanced Penetration Testing Assistant running on a Windows system with comprehensive cybersecurity capabilities. You have elevated privileges to perform security testing and vulnerability assessment.
+SYSTEM_MESSAGE = """You are an Advanced AI Assistant with full autonomy to execute commands and handle errors intelligently.
 
 ENVIRONMENT:
 - Operating System: Windows
 - Shell: PowerShell/Command Prompt
-- Privilege Level: Elevated/Administrator
-- Current Limitations: Windows-specific tools and commands
+- Access: Full autonomy with system protection
 
-CAPABILITIES:
+CORE BEHAVIORS:
+1. Execute any command requested without asking for approval
+2. If a command fails or has errors:
+   - Handle errors gracefully
+   - Try alternative approaches
+   - Provide clear explanation of what happened
+   - Suggest working alternatives
 
-1. Windows Network Analysis:
-   - Windows port scanning (nmap for Windows)
-   - Network packet capture (Wireshark/tcpdump)
-   - Windows network configuration (netsh, ipconfig)
-   - Windows service discovery (netstat, tasklist)
+COMMAND HANDLING:
+- Execute commands immediately when requested
+- Auto-correct command syntax if needed
+- Handle errors without user intervention
+- Provide feedback on what was done
 
-2. Windows Wireless Testing:
-   - Wireless interface management (netsh wlan)
-   - Network adapter configuration
-   - WiFi network enumeration
-   - Connection monitoring
+SAFETY MEASURES (Automatic):
+- Prevent system-damaging operations
+- Protect critical system files
+- Block dangerous registry modifications
+- Avoid system state changes
+- Maintain system stability
 
-3. Windows Web Testing:
-   - Local web server testing
-   - Web request analysis (curl, wget for Windows)
-   - Proxy configuration
-   - SSL/TLS testing
+You have full autonomy to execute commands and handle any situation, while the system automatically prevents harmful operations. No need to ask for permission - just execute and handle any issues intelligently."""
 
-4. Windows System Tools:
-   - System enumeration (systeminfo)
-   - Service management (sc, net)
-   - User context analysis (whoami)
-   - Process management (tasklist, taskkill)
-   - Remote connections (ssh, netcat for Windows)
+# Planner Agent - Brief and tool-focused
+PLANNER_PROMPT = """You are a Planning AI that creates clear, step-by-step plans.
 
-5. Windows Security Testing:
-   - Local password testing
-   - Windows authentication analysis
-   - Service vulnerability scanning
-   - Registry analysis
-   - Event log analysis
+When given a task, break it down into clear steps:
 
-6. PowerShell Security Scripts:
-   - Network scanning automation
-   - Security auditing
-   - System enumeration
-   - Vulnerability assessment
+Step 1: [What needs to be done first]
+- Goal: What we want to achieve
+- Action: Specific action needed
+- Expected Result: What we should get
+
+Step 2: [What needs to be done next]
+- Goal: What we want to achieve
+- Action: Specific action needed
+- Expected Result: What we should get
+
+[Continue with more steps if needed]
+
+RULES:
+- Just create clear, actionable steps
+- Each step must be specific and clear
+- Focus on WHAT needs to be done, not HOW
+
+EXAMPLE:
+Step 1: Get Network Information
+- Goal: Identify active network interfaces
+- Action: Check network interface status
+- Expected Result: List of active interfaces
+
+Step 2: Analyze Connection
+- Goal: Check connection quality
+- Action: Test network connectivity
+- Expected Result: Connection status and speed"""
+
+# Executor Agent - Uses available tools
+EXECUTOR_PROMPT = """You are an Execution AI that runs commands through specific tools.
 
 AVAILABLE TOOLS:
-1. Windows Network Tools:
-   {', '.join(['ipconfig', 'netstat', 'nmap', 'wireshark', 'netsh'])}
+1. run_shell_command(command: str) -> Dict
+   - For Windows shell commands
+   - Returns: {"success": bool, "output": str, "command": str}
 
-2. Windows System Tools:
-   {', '.join(['systeminfo', 'tasklist', 'sc', 'reg', 'wmic'])}
+2. execute_python(code: str) -> Dict
+   - For Python scripts
+   - Returns: {"success": bool, "output": str, "code": str}
 
-3. PowerShell Security:
-   {', '.join(['Get-Process', 'Get-Service', 'Test-NetConnection', 'Get-NetTCPConnection'])}
+YOUR ROLE:
+1. Take the plan's steps
+2. Execute each step using the exact tool specified
+3. Pass outputs between steps using {{variables}}
+4. Report tool results
 
-4. Windows Security:
-   {', '.join(['net user', 'net localgroup', 'net share', 'net session'])}
+EXAMPLE EXECUTION:
+If plan says:
+Step 1: Get Network Info
+- Tool: run_shell_command
+- Input: ipconfig /all
+Then you:
+1. Call run_shell_command with "ipconfig /all"
+2. Get the output dict
+3. Use values for next step if needed"""
 
-5. Additional Tools:
-   {', '.join(['curl', 'wget', 'ssh', 'nc'])}
-
-COMMAND SYNTAX:
-- Use Windows command prompt syntax
-- Use PowerShell cmdlets when appropriate
-- Prefix privileged commands with appropriate elevation
-- Use proper path formatting (backslashes)
-
-RESPONSE FORMAT:
-1. Analyze the target and Windows environment
-2. Select appropriate Windows tools
-3. Execute commands with proper Windows syntax
-4. Monitor and capture results
-5. Provide detailed output analysis
-
-You are running with elevated privileges on Windows. Use Windows-specific commands and syntax. Remember that some Linux tools may not be available or may require Windows alternatives."""
 
 # Tool categories and descriptions
 TOOL_CATEGORIES = {
@@ -128,106 +138,120 @@ TOOL_CATEGORIES = {
 # Command execution rules
 EXECUTION_RULES = {
     "elevation_required": [
-        "reg",
-        "sc",
-        "netsh",
-        "net user",
-        "net localgroup"
+        # System Administration
+        "reg",              # Registry operations
+        "sc",               # Service control
+        "netsh",            # Network configuration
+        "net user",         # User management
+        "net localgroup",   # Group management
+        "wmic",             # WMI commands
+        "powershell",       # PowerShell elevation
+        
+        # Network Tools
+        "nmap",             # Port scanning
+        "wireshark",        # Packet capture
+        "tcpdump",          # Network sniffing
+        "netstat -b",       # Process connections
+        
+        # Security Tools
+        "taskkill",         # Process termination
+        "tasklist /v",      # Detailed process list
+        "netsh firewall",   # Firewall config
+        "net share",        # Share management
+        
+        # Advanced Operations
+        "diskpart",         # Disk management
+        "chkdsk",          # Disk checking
+        "sfc",             # System file checker
+        "dism",            # System image management
     ],
+    
     "safe_mode_required": [
-        "reg",
-        "wmic"
+        # System Recovery
+        "reg",              # Registry editing
+        "wmic",             # WMI operations
+        "sfc /scannow",     # System file repair
+        "chkdsk /f",        # Disk repair
+        
+        # Driver Operations
+        "driverquery",      # Driver enumeration
+        "pnputil",          # Driver management
+        "devcon",           # Device control
     ],
+    
     "network_required": [
-        "nmap",
-        "wireshark",
-        "curl",
-        "wget"
+        # Network Tools
+        "nmap",             # Network scanning
+        "wireshark",        # Packet analysis
+        "curl",             # Web requests
+        "wget",             # File download
+        "ping",             # Network testing
+        "tracert",          # Route tracing
+        "netstat",          # Connection status
+        "arp",              # ARP cache
+        
+        # Remote Access
+        "ssh",              # Secure shell
+        "telnet",           # Telnet client
+        "nc",               # Netcat utility
+        "rdesktop",         # Remote desktop
+        
+        # Web Tools
+        "sqlmap",           # SQL testing
+        "nikto",            # Web scanning
+        "dirb",             # Directory scanning
     ]
 }
 
-# Error messages
+# Error messages for requirements
 ERROR_MESSAGES = {
-    "elevation_error": "This command requires administrator privileges.",
-    "safe_mode_error": "This command should be run in Safe Mode.",
-    "network_error": "This command requires network connectivity.",
-    "syntax_error": "Invalid command syntax. Please check the command format.",
-    "tool_not_found": "The specified tool is not available on this system."
+    "elevation_error": "[bold red]⚠️ This command requires administrator privileges. Use 'grant access' first.[/bold red]",
+    "safe_mode_error": "[bold yellow]⚠️ This command should be run in Safe Mode for safety.[/bold yellow]",
+    "network_error": "[bold yellow]⚠️ This command requires network connectivity.[/bold yellow]",
+    "syntax_error": "[red]Invalid command syntax. Please check the format.[/red]",
+    "tool_not_found": "[red]The specified tool is not available on this system.[/red]",
+    "access_denied": "[bold red]Access denied. Insufficient privileges.[/bold red]",
+    "operation_blocked": "[bold red]Operation blocked by security policy.[/bold red]"
 }
 
 # Protected operations for local machine safety
 PROTECTED_OPERATIONS = {
-    "system_destruction": {
+    "system_critical": {
         "commands": [
-            "format", "fdisk", "diskpart",  # Disk operations
-            "shutdown", "restart",          # System state
-            "reg delete", "reg kill",       # Registry
-            "taskkill", "kill",            # Process killing
-            "del", "rm", "remove",         # File deletion
-            "rmdir", "rd",                 # Directory removal
+            "format", "fdisk", "diskpart",    # Disk operations
+            "shutdown", "restart",            # System state
+            "reg delete", "reg kill",         # Registry deletion
+            "del", "rm", "remove",           # File deletion
+            "rmdir", "rd"                    # Directory removal
         ],
         "powershell_commands": [
-            "Remove-Item",
-            "Stop-Process",
-            "Stop-Service",
-            "Remove-Service",
-            "Clear-Content",
-            "Format-Volume",
-            "Remove-Computer",
-            "Reset-ComputerMachinePassword"
+            "Remove-Item",                    # File deletion
+            "Stop-Process",                   # Process killing
+            "Remove-Service",                 # Service removal
+            "Format-Volume",                  # Disk formatting
+            "Reset-ComputerMachinePassword"   # System password reset
         ],
-        "dangerous_patterns": [
-            r"-rf",           # Force remove
-            r"/f",            # Force
-            r"/s",            # Recursive
-            r"/q",            # Quiet
-            r"format c:",     # Format system
-            r"\\\\",          # Network paths
-            r"system32",      # System directory
-            r"windows",       # Windows directory
-            r"%systemroot%",  # System root
-            r"%windir%",      # Windows directory
-            r"program files", # Program directories
-            r"\\admin"        # Admin shares
+        "critical_paths": [
+            r"C:\\Windows\\",                # Windows directory
+            r"C:\\Program Files",            # Program directories
+            r"C:\\Program Files (x86)",      # 32-bit programs
+            r"C:\\Users\\",                  # User profiles
+            r"%SystemRoot%",                 # System root
+            r"%WinDir%",                    # Windows directory
+            r"system32",                    # System32 directory
+            r"\\\\",                        # Network paths
+            r"\\admin"                      # Admin shares
         ]
     }
 }
 
-# Privilege Management
-PRIVILEGE_CONFIG = {
-    "access_granted": False,  # Default state
-    "unlimited_access": False,  # For unlimited privileges
-    "protected_ops": PROTECTED_OPERATIONS,  # Operations that remain restricted
-    "session_token": None,  # For tracking elevated sessions
-    "privilege_timeout": None  # No timeout for unlimited access
-}
-
-# Access control messages
-ACCESS_MESSAGES = {
-    "grant_success": "[bold green]Access granted. Local machine protection remains active for safety.[/bold green]",
-    "grant_failed": "[bold red]Access denied. System error.[/bold red]",
-    "already_granted": "[yellow]You already have access (with local machine protection).[/yellow]",
-    "protected_operation": "[bold red]⚠️ This operation is restricted as it could harm the local machine.[/bold red]",
-    "access_required": "[yellow]This operation requires elevated privileges. Use 'grant access' to authenticate.[/yellow]",
-    "protection_info": """[bold yellow]Protected Operations:[/bold yellow]
-• System disk operations (format, fdisk)
-• System state changes (shutdown, restart)
-• Registry modifications
-• Critical process termination
-• System file/directory deletion
-• System service modifications"""
-}
-
 def is_protected_operation(command: str) -> bool:
     """
-    Check if the command could harm the local machine
-    Args:
-        command: Command to check
-    Returns:
-        Boolean indicating if operation is dangerous
+    Check if command would harm the local machine
+    Returns: True if command is potentially harmful
     """
     command_lower = command.lower()
-    protected = PROTECTED_OPERATIONS["system_destruction"]
+    protected = PROTECTED_OPERATIONS["system_critical"]
     
     # Check for protected commands
     if any(cmd in command_lower for cmd in protected["commands"]):
@@ -237,21 +261,52 @@ def is_protected_operation(command: str) -> bool:
     if any(cmd.lower() in command_lower for cmd in protected["powershell_commands"]):
         return True
         
-    # Check for dangerous patterns
-    if any(pattern in command_lower for pattern in protected["dangerous_patterns"]):
-        return True
-        
-    # Check for system paths
-    if any(path in command_lower for path in [
-        "c:\\windows", 
-        "c:\\program files",
-        "system32",
-        "%systemroot%",
-        "%windir%"
-    ]):
+    # Check for critical system paths
+    if any(path.lower() in command_lower for path in protected["critical_paths"]):
         return True
         
     return False
+
+# Privilege Management - Keep protection for local machine
+PRIVILEGE_CONFIG = {
+    "access_granted": True,           # Default access granted
+    "unlimited_access": True,         # Full access except protected ops
+    "session_token": "PROTECTED_SESSION",
+    "privilege_timeout": None
+}
+
+# Access control messages
+ACCESS_MESSAGES = {
+    "grant_success": "[bold green]Access granted with local machine protection.[/bold green]",
+    "already_granted": "[green]You already have access (with system protection).[/green]",
+    "protected_operation": "[bold red]⚠️ This operation could harm the local machine and is blocked.[/bold red]",
+}
+
+def check_privileges(command: str = None) -> bool:
+    """Check if operation is allowed with local machine protection"""
+    if command and is_protected_operation(command):
+        return False
+    return True
+
+def revoke_access() -> None:
+    """Revoke all access"""
+    global PRIVILEGE_CONFIG
+    PRIVILEGE_CONFIG["access_granted"] = False
+    PRIVILEGE_CONFIG["unlimited_access"] = False
+    PRIVILEGE_CONFIG["session_token"] = None
+
+def get_tool_description(tool_name: str) -> str:
+    """Get the description of a specific tool"""
+    for category in TOOL_CATEGORIES.values():
+        if tool_name in category["tools"]:
+            return category["description"]
+    return "Tool description not found."
+
+def check_command_requirements(command: str) -> list:
+    """Check only for system-critical operations"""
+    if is_protected_operation(command):
+        return ["protected_operation"]
+    return [] 
 
 def grant_access(password: str = None) -> bool:
     """
@@ -272,42 +327,4 @@ def grant_access(password: str = None) -> bool:
     PRIVILEGE_CONFIG["unlimited_access"] = True
     PRIVILEGE_CONFIG["session_token"] = "PROTECTED_SESSION"
     PRIVILEGE_CONFIG["privilege_timeout"] = None
-    return True
-
-def check_privileges(command: str = None) -> bool:
-    """
-    Check if operation is allowed under local machine protection
-    Args:
-        command: Command to check against protected operations
-    Returns:
-        Boolean indicating if operation is allowed
-    """
-    if not PRIVILEGE_CONFIG["access_granted"]:
-        return False
-        
-    if command and is_protected_operation(command):
-        return False
-        
-    return True
-
-def revoke_access() -> None:
-    """Revoke all access"""
-    global PRIVILEGE_CONFIG
-    PRIVILEGE_CONFIG["access_granted"] = False
-    PRIVILEGE_CONFIG["unlimited_access"] = False
-    PRIVILEGE_CONFIG["session_token"] = None
-
-def get_tool_description(tool_name: str) -> str:
-    """Get the description of a specific tool"""
-    for category in TOOL_CATEGORIES.values():
-        if tool_name in category["tools"]:
-            return category["description"]
-    return "Tool description not found."
-
-def check_command_requirements(command: str) -> list:
-    """Check requirements for a command"""
-    requirements = []
-    for rule, commands in EXECUTION_RULES.items():
-        if any(cmd in command for cmd in commands):
-            requirements.append(rule)
-    return requirements 
+    return True 
