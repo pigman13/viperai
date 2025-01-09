@@ -147,35 +147,20 @@ class ChatAgent:
             return error_msg
     
     def visualize_graph(self):
-        """Visualize the agent graph structure using Graphviz"""
+        """Visualize the agent graph structure"""
         try:
-            # Create a new directed graph
-            dot = Digraph(comment='Agent Graph')
-            dot.attr(rankdir='LR')  # Left to right layout
-            
-            # Add nodes
-            dot.node('START', 'START', shape='circle')
-            dot.node('planner', 'Planner', shape='box')
-            dot.node('executor', 'Executor', shape='box')
-            dot.node('tools', 'Tools', shape='box')
-            dot.node('END', 'END', shape='circle')
-            
-            # Add edges
-            dot.edge('START', 'planner')
-            dot.edge('planner', 'executor')
-            dot.edge('executor', 'tools')
-            dot.edge('tools', 'executor')
-            dot.edge('executor', 'END')
-            
-            # Save the graph
-            output_path = 'agent_graph.png'
-            dot.render(output_path, format='png', cleanup=True)
-            
-            console.print("\n[bold blue]Agent Graph Structure:[/bold blue]")
-            console.print(f"[green]Saved graph visualization to: {output_path}.png[/green]")
-            
-            return f"{output_path}.png"
-            
+            # Create temp file for the image
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+                # Generate and save the graph visualization
+                graph_image = self.graph.get_graph().draw_mermaid_png()
+                tmp.write(graph_image)
+                tmp.flush()
+                
+                # Display using rich
+                console.print("\n[bold blue]Agent Graph Structure:[/bold blue]")
+                console.print(f"[green]Saved graph visualization to: {tmp.name}[/green]")
+                
+                return tmp.name
         except Exception as e:
             console.print(f"[red]Failed to visualize graph: {str(e)}[/red]")
             return None
