@@ -73,6 +73,12 @@ def main():
         chat_agent = ChatAgent()
         console.print("[green]Agents initialized successfully![/green]")
         
+        # After initializing chat_agent
+        console.print("[yellow]Generating graph visualization...[/yellow]")
+        graph_path = chat_agent.visualize_graph()
+        if graph_path:
+            console.print("[green]Graph visualization generated successfully![/green]")
+        
         # Main chat loop
         while True:
             try:
