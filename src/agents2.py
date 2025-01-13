@@ -5,7 +5,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from typing import Annotated, TypedDict, Literal
 from src.config import get_model_settings, OLLAMA_CONFIG
-from src.prompts import PLANNER_PROMPT, EXECUTOR_PROMPT
+from src.prompts import SCRIPT_MAKER_PROMPT, EXECUTOR_PROMPT
 from src.tools import tools
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -14,15 +14,17 @@ import json
 from IPython.display import Image, display
 import tempfile
 import os
+import time
 
 console = Console()
 base_url = OLLAMA_CONFIG["base_url"]
 
 class State(TypedDict):
-    """State container for managing message history and plan"""
+    """State container for managing message history and execution state"""
     messages: Annotated[list[BaseMessage], add_messages]
-    plan: str | None
+    scripts: str | None
     executing: bool
+    tool_results: list | None  # Store tool execution results
 
 class ChatAgent:
     def __init__(self):
@@ -33,58 +35,124 @@ class ChatAgent:
             base_url=base_url
         )
         self.graph = self._create_execution_graph()
+        self.tool_history = []
         
     def _create_execution_graph(self) -> StateGraph:
         graph = StateGraph(State)
         llm_with_tools = self.llm.bind_tools(tools)
         
-        # Planner Node
-        def planner(state: State):
-            if state.get("plan") is None:
-                messages = [
-                    SystemMessage(content=PLANNER_PROMPT),
-                    *state["messages"]
-                ]
-                response = self.llm.invoke(messages)
-                return {
-                    "messages": [response],
-                    "plan": response.content,
-                    "executing": False
-                }
+        # Script Maker Node - Creates implementation scripts
+        def script_maker(state: State):
+            if state.get("scripts") is None:
+                try:
+                    messages = [
+                        SystemMessage(content=SCRIPT_MAKER_PROMPT),
+                        *state["messages"]
+                    ]
+                    response = llm_with_tools.invoke(messages)
+                    try:
+                        scripts = json.loads(response.content)
+                        if not isinstance(scripts, dict) or "scripts" not in scripts:
+                            raise ValueError("Invalid scripts structure")
+                    except:
+                        # Create simple script structure
+                        scripts = {
+                            "scripts": [{
+                                "step": 1,
+                                "implementation": {
+                                    "type": "bash",
+                                    "code": response.content,
+                                    "tool": "run_command",
+                                    "parameters": []
+                                }
+                            }]
+                        }
+                    return {
+                        "messages": [response],
+                        "scripts": json.dumps(scripts, indent=2),
+                        "executing": False,
+                        "tool_results": []
+                    }
+                except Exception as e:
+                    console.print(f"[red]Script generation error: {str(e)}[/red]")
+                    return {
+                        "messages": [AIMessage(content=f"Script generation error: {str(e)}")],
+                        "scripts": json.dumps({"scripts": []}),
+                        "executing": False,
+                        "tool_results": []
+                    }
             return state
         
-        # Executor Node
+        # Executor Node - Executes scripts
         def executor(state: State):
             if not state.get("executing", False):
-                messages = [
-                    SystemMessage(content=EXECUTOR_PROMPT),
-                    HumanMessage(content=state["plan"])
-                ]
-                response = llm_with_tools.invoke(messages)
-                return {
-                    "messages": [response],
-                    "executing": True
-                }
+                try:
+                    scripts = json.loads(state["scripts"])
+                    messages = [
+                        SystemMessage(content=EXECUTOR_PROMPT),
+                        HumanMessage(content=f"Implementation Scripts: {json.dumps(scripts, indent=2)}")
+                    ]
+                    response = llm_with_tools.invoke(messages)
+                    return {
+                        "messages": [response],
+                        "executing": True,
+                        "tool_results": state.get("tool_results", [])
+                    }
+                except Exception as e:
+                    console.print(f"[red]Execution error: {str(e)}[/red]")
+                    return {
+                        "messages": [AIMessage(content=f"Execution error: {str(e)}")],
+                        "executing": True,
+                        "tool_results": state.get("tool_results", [])
+                    }
             return {
-                "messages": [llm_with_tools.invoke(state["messages"])]
+                "messages": [llm_with_tools.invoke(state["messages"])],
+                "tool_results": state.get("tool_results", [])
             }
         
-        # Add nodes
-        graph.add_node("planner", planner)
-        graph.add_node("executor", executor)
-        graph.add_node("tools", ToolNode(tools=tools))
+        # Tool execution node - Enhanced with result tracking
+        class EnhancedToolNode(ToolNode):
+            def __call__(self, inputs: dict):
+                outputs = super().__call__(inputs)
+                tool_results = inputs.get("tool_results", [])
+                
+                for message in outputs.get("messages", []):
+                    if isinstance(message, ToolMessage):
+                        try:
+                            result = json.loads(message.content)
+                            tool_results.append({
+                                "tool": message.name,
+                                "result": result,
+                                "timestamp": time.time()
+                            })
+                        except:
+                            tool_results.append({
+                                "tool": message.name,
+                                "result": message.content,
+                                "timestamp": time.time()
+                            })
+                
+                outputs["tool_results"] = tool_results
+                return outputs
         
-        # Routing logic
+        # Add nodes
+        graph.add_node("script_maker", script_maker)
+        graph.add_node("executor", executor)
+        graph.add_node("tools", EnhancedToolNode(tools=tools))
+        
+        # Enhanced routing logic
         def route_next(state: State) -> Literal["executor", "tools", "__end__"]:
-            if not state.get("plan"):
-                return "executor"
             if not state.get("executing"):
                 return "executor"
+            if state.get("tool_results") and len(state["tool_results"]) > 0:
+                last_result = state["tool_results"][-1]
+                if isinstance(last_result.get("result"), dict) and last_result["result"].get("requires_followup"):
+                    return "executor"
             return tools_condition(state)
         
-        # Add edges
+        # Add edges with enhanced routing
         graph.add_conditional_edges(
-            "planner",
+            "script_maker",
             lambda _: "executor",
             {
                 "executor": "executor"
@@ -97,12 +165,12 @@ class ChatAgent:
             {
                 "executor": "executor",
                 "tools": "tools",
-                "__end__": "__end__"
+                "__end__": END
             }
         )
         
         graph.add_edge("tools", "executor")
-        graph.add_edge(START, "planner")
+        graph.add_edge(START, "script_maker")
         
         return graph.compile()
     
@@ -110,8 +178,9 @@ class ChatAgent:
         try:
             initial_state = {
                 "messages": [HumanMessage(content=user_input)],
-                "plan": None,
-                "executing": False
+                "scripts": None,
+                "executing": False,
+                "tool_results": []
             }
             
             result = ""
@@ -119,9 +188,9 @@ class ChatAgent:
                 if "messages" in event:
                     message = event["messages"][-1]
                     
-                    if "plan" in event and event["plan"] and not event.get("executing", False):
-                        console.print("\n[bold blue]Planning Phase:[/bold blue]")
-                        console.print(event["plan"])
+                    if "scripts" in event and event["scripts"]:
+                        console.print("\n[bold blue]Script Generation Phase:[/bold blue]")
+                        console.print(event["scripts"])
                         
                     if isinstance(message, ToolMessage):
                         try:
@@ -145,22 +214,3 @@ class ChatAgent:
                               title="[red]Execution Error[/red]", 
                               border_style="red"))
             return error_msg
-    
-    def visualize_graph(self):
-        """Visualize the agent graph structure"""
-        try:
-            # Create temp file for the image
-            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-                # Generate and save the graph visualization
-                graph_image = self.graph.get_graph().draw_mermaid_png()
-                tmp.write(graph_image)
-                tmp.flush()
-                
-                # Display using rich
-                console.print("\n[bold blue]Agent Graph Structure:[/bold blue]")
-                console.print(f"[green]Saved graph visualization to: {tmp.name}[/green]")
-                
-                return tmp.name
-        except Exception as e:
-            console.print(f"[red]Failed to visualize graph: {str(e)}[/red]")
-            return None

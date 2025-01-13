@@ -4,7 +4,7 @@ Configuration settings for the LLama model and system behavior.
 
 # Ollama API Configuration
 OLLAMA_CONFIG = {
-    "base_url": "http://localhost:11434",
+    "base_url": "http://192.168.56.1:11434",
     "timeout": 120,  # Increased for complex operations
     "retry_attempts": 3,
     "retry_delay": 2
